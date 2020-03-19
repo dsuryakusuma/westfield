@@ -237,7 +237,3 @@ Further interests:
 - Loss Frequency (CY) by State
 - Take me home, Country roads...
 
-```{r}
-(12.0 + 12.0 + 13.2 + 14.8 + 14.8 + 16.0 + 13.2 + 14.8 + 11.1) / (4*9 - 1)
-```
-
