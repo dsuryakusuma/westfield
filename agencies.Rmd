@@ -1,0 +1,243 @@
+---
+title: "Quick Visualization of Westfield's Top Agencies"
+author: "Daniel Suryakusuma"
+date: "1/29/2020"
+output: 
+  html_document: 
+    code_folding: "show"
+---
+
+<center>
+[![Westfield](https://dsury.com/content/images/cc/wf.png)](https://wf.dsury.com)
+</center>
+
+```{r setup, message=FALSE, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pdftools)
+library(readxl)
+
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(kableExtra)
+
+library(stringr)
+
+library(usmap)
+```
+
+> *"We think the best experience comes from working with a real, live person. That’s why we only offer our products through trained, knowledgeable agents. Westfield is represented by some of the best independent agencies in the business. We take great care and consideration in choosing our agency force to make sure they’re a good fit for both Westfield and our customers. Selected for their strength, responsiveness and customer focus, we work hard to connect with agencies that offer both experience and expertise. Westfield agencies are selected for their proven commitment to customers and alignment with Westfield’s promise to provide solutions."*
+
+Westfield recognizes **three tiers** of its agencies in terms of expertise and commitment to success and values.
+
+- [Trilogy](https://www.westfieldinsurance.com/Westfield%20Corporate%20Site%20Assets/Documents/2019-20_Trilogy%20Agencies.pdf)
+- [Horizon](https://www.westfieldinsurance.com/Westfield%20Corporate%20Site%20Assets/Documents/2019-20_Horizon%20Agencies.pdf)
+- [Rise](https://www.westfieldinsurance.com/Westfield%20Corporate%20Site%20Assets/Documents/2019-20_Rise%20Agencies.pdf)
+
+
+#### Complexity, Simplified:
+
+> *"When you have too many other things to worry about while managing your business, you don’t have time to deal with complex insurance plans. Instead, Westfield agents keep up with you. We take the complex and make it simple for you to understand quickly and efficiently, giving you back more time in your day."*
+
+#### Benefits of working with an independent insurance agent:
+
+- Expertise in your industry
+- Extensive experience working with small busiunesses
+- Flexibility and access to multitudes of products and coverages 
+- Proven results and quality protection
+
+
+## Web .pdf scraping
+
+From Westfield's [public website](https://www.westfieldinsurance.com/about-us/independent-agency-partners), we don't have numbers for sales or size of these agencies; however, we can still do a quick classification. 
+
+```{r}
+# top 10%
+trilogy.raw <- pdf_text(pdf = "https://www.westfieldinsurance.com/Westfield%20Corporate%20Site%20Assets/Documents/2019-20_Trilogy%20Agencies.pdf")
+
+qkable <- function(x, height="360px") {
+  x %>% kable(format = "html") %>% kable_styling(bootstrap_options = c("condensed", "responsive", "striped", "hover", "bordered"), font_size = 11, position = "center") %>% scroll_box(width="100%", height= height, fixed_thead =  list(enabled = TRUE, background = "lightgrey") ) 
+}
+```
+
+Let's make a function to start off the data cleaning. 
+
+
+```{r}
+
+getIA <- function(raw_data, keyword) {
+  # raw.data : read out of pdf_text function; should be a list of arrays (of text)
+  # keyword : text of the IA tier by which we want to separate (i.e. "Trilogy")
+  tmp <- raw_data %>% strsplit("\\n") # split by line breaks
+  n.pages <- length(raw_data) # number of pages in the pdf
+  
+  scrape <- tibble(data = grep( paste0("  ", keyword), tmp[[1]], value = TRUE) ) # keep only data columns of spreadsheet
+  
+  # combine the pages of the pdf
+  if (n.pages >= 2) {
+    for (pg in 2:n.pages) {
+      # print(pg) # debug
+      scrape <- rbind(scrape, tibble( 
+                                   data = grep( paste0("  ", keyword), tmp[[pg]], 
+                                                      value = TRUE) ) )  # add new pages' columns
+  } }
+  # print(scrape) # debugging
+  
+  # clean tab delimited
+  # while ( grep("  ", scrape) ) { #
+  #   scrape <- gsub( pattern = "$", replace = " ", x = scrape)
+  # }
+  
+  
+  # scrape <-  mutate(scrape, 
+  #                   modified = gsubgsub("  ", "#", scrape) )
+  # 
+  return(tibble(scrape))
+}
+```
+
+
+```{r}
+horizon.raw <- pdf_text(pdf = "https://www.westfieldinsurance.com/Westfield%20Corporate%20Site%20Assets/Documents/2019-20_Horizon%20Agencies.pdf")
+horizon <- getIA(raw_data = horizon.raw, keyword = "Horizon")
+
+
+
+rise.raw <- pdf_text(pdf = "https://www.westfieldinsurance.com/Westfield%20Corporate%20Site%20Assets/Documents/2019-20_Rise%20Agencies.pdf")
+rise <- getIA(raw_data = rise.raw, keyword = "Rise") # clean in excel for interest of time (I should get sleep before the interview)
+```
+
+
+```{r, include = FALSE}
+write.csv2(horizon[[1]][[1]], file = "westfield/horizon.csv")
+write.csv2(rise[[1]][[1]], file = "westfield/rise.csv")
+```
+
+
+```{r, include = FALSE}
+# horizon <- gsub( pattern = "  ", replace = "$", x = horizon)
+# tst <-  within(horizon, column <- data.frame(do.call('rbind', strsplit(as.character(column), "$", fixed = TRUE))))
+
+# tst <- separate(data = horizon, col = XX)
+
+# horizon %>% qkable()
+
+
+# typeof(horizon) # list
+
+# View(horizon)
+
+# read in cleaned excel
+wf <- read_xlsx(path = 'Box/Actuary/work-apps/Westfield/agencies.xlsx')
+# View(wf)
+
+```
+
+
+#### Table: Top 30% Agencies (All 3 Tiers Combined)
+
+```{r}
+wf %>% qkable(height = "500px")
+```
+
+# Visualization & Mapping
+
+```{r}
+n.trilogy <- c()
+n.horizon <- c()
+n.rise <- c()
+
+for (usstate in statepop$abbr) {
+  n.trilogy <- c(n.trilogy, nrow(wf %>% filter(Rank == "Trilogy", State == usstate)) )
+  n.horizon <- c(n.horizon, nrow(wf %>% filter(Rank == "Horizon", State == usstate)) )
+  n.rise <- c(n.rise, nrow(wf %>% filter(Rank == "Rise", State == usstate)) )
+}
+
+agency.counts <- tibble(state = statepop$abbr, 
+                        trilogy = n.trilogy, 
+                        horizon = n.horizon, 
+                        rise = n.rise, 
+                        pop = statepop$pop_2015) %>% 
+  mutate(ratio = (n.trilogy + n.horizon + rise)/pop )
+
+agency.counts %>% qkable()
+```
+
+<center>
+```{r, include = FALSE, eval = FALSE}
+agency.counts %>% 
+  select(- c(pop, ratio)) %>%
+  filter( (trilogy + horizon + rise) > 0 ) %>% 
+  pivot_longer(- state, names_to = "Rank", values_to = "Count") %>% 
+  # qkable()
+  ggplot() + geom_bar( aes(x = state, y = Rank))  # not working now 
+```
+</center>
+
+## Trilogy Tier Agencies (Top 10%)
+
+Trilogy agencies represent the top 10 percent of Westfield’s overall agency force and are identified as “the best of the best.” These agencies align with Westfield’s promise to provide solutions and will continue demonstrating excellence in various performance metrics including responsiveness and focus on customers and key investments. Achieving the Trilogy designation is a distinguished honor and title reserved for only the very finest of Westfield’sagency partners.
+
+<center>
+```{r}
+# Trilogy Tier
+plot_usmap( data = agency.counts, regions = "states", values = "trilogy", color = "grey", labels = TRUE, label_color = "white" ) + labs(title = "Top Westfield Agencies - Trilogy (Top 10%)") + theme(panel.background = element_rect(color = "black", fill = "white")) + scale_fill_continuous(low = "white", high = "orange", name = "Agencies")
+```
+</center>
+
+
+## Horizon Tier Agencies (Top 10 ~ 20%)
+
+Horizon agencies represent the top 20 percent of Westfield’s overall agency force. These agencies align with Westfield’s promise to provide solutions and will continue demonstrating excellence in various performance metrics including responsiveness and focus on customers and key investments. Achieving the Horizon designation is a distinguished honor and title reserved for only the very finest of Westfield’s agency partners.
+
+<center>
+```{r}
+# Horizon tier
+plot_usmap( data = agency.counts, regions = "states", values = "horizon", color = "grey", labels = TRUE, label_color = "white" ) + labs(title = "Top Westfield Agencies - Horizon (Top 10~20%)") + theme(panel.background = element_rect(color = "black", fill = "white")) + scale_fill_continuous(low = "white", high = "orange", name = "Agencies")
+```
+</center>
+
+
+## Rise Tier Agencies (Top 20 ~ 30%)
+
+Rise agencies represent the top 30 percent of Westfield’s overall agency force. These agencies align with Westfield’s promise to provide solutions and will continue demonstrating excellence in various performance metrics including responsiveness and focus on customers and key investments. Achieving the Rise designation is a distinguished honor and title reserved for only the very finest of Westfield’s agency partners.
+
+
+<center>
+
+```{r}
+# Rise tier
+plot_usmap( data = agency.counts, regions = "states", values = "rise", color = "grey", labels = TRUE, label_color = "white" ) + labs(title = "Top Westfield Agencies - Rise (Top 20~30%)") + theme(panel.background = element_rect(color = "black", fill = "white")) + scale_fill_continuous(low = "white", high = "orange", name = "Agencies")
+```
+
+</center>
+
+
+
+
+
+## Westfield's Presence by State
+
+$$\text{Ratio} = \frac{\text{Number of Agencies in State}}{\text{Total Population of State}}$$
+
+<center>
+```{r}
+# presence
+plot_usmap( data = agency.counts, regions = "states", values = "ratio", color = "grey", labels = TRUE, label_color = "white" ) + labs(title = "Westfield's Presence by State (Ratio of # Agencies to State Population)") + theme(panel.background = element_rect(color = "black", fill = "white")) + scale_fill_continuous(low = "white", high = "orange", name = "Agencies")
+```
+</center>
+
+> A priori, what do you think Westfield's geographical strategy should be?
+
+Further interests:
+
+- Heat maps by policyholder age, for each personal line
+- Average Loss Severity by State 
+- Loss Frequency (CY) by State
+- Take me home, Country roads...
+
+```{r}
+(12.0 + 12.0 + 13.2 + 14.8 + 14.8 + 16.0 + 13.2 + 14.8 + 11.1) / (4*9 - 1)
+```
+
